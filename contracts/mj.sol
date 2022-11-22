@@ -26,9 +26,9 @@ contract ScholorhsipPortal{
         uint fundDistributed;
     }
 
-    Student[] public registeredStudents;
-    Organization[] public registeredOrganizations;
-    mapping(uint=>Student) registeredStudentsmp;
+    // Student[] public registeredStudents;
+    // Organization[] public registeredOrganizations;
+    mapping(uint=>Student) public registeredStudentsmp;
     mapping(address=>Organization) public registeredOrganizationsmp;
 
     function registerStudent(uint _aadhar,uint _accNum) public
@@ -36,13 +36,13 @@ contract ScholorhsipPortal{
         //check if student already registered
         require(registeredStudentsmp[_aadhar].aadhar== 0, "student already registered");
 
-        registeredStudents.push();
-        Student storage s=registeredStudents[registeredStudents.length-1];
+        // registeredStudents.push();
+        Student storage s=registeredStudentsmp[_aadhar];
         s.aadhar=_aadhar;
         s.accNum = _accNum;
         s.receivedGovScholorship = false;
         s.lock = false;
-        registeredStudentsmp[_aadhar]=s;
+        // registeredStudentsmp[_aadhar]=s;
         // s.scholorships = new Scholorship[](0);
     }
 
@@ -52,7 +52,7 @@ contract ScholorhsipPortal{
         require(bytes(registeredOrganizationsmp[msg.sender].name).length== 0, "organization with this address already exist");
 
         Organization memory org = Organization({name:_name,isGov:_isgov,fundSanctioned:_fs,fundDistributed:0});
-        registeredOrganizations.push(org);
+        // registeredOrganizations.push(org);
         registeredOrganizationsmp[msg.sender] = org;
     }
 
@@ -92,6 +92,7 @@ contract ScholorhsipPortal{
         {
         Student storage stud = registeredStudentsmp[studentId];
         stud.receivedGovScholorship=true;
+        stud.lock = false;
         }
 
 
