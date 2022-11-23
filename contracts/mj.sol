@@ -5,10 +5,17 @@ import "hardhat/console.sol";
 
 contract ScholorhsipPortal{
 
+    address owner;
+
+    constructor()
+    {
+        owner = msg.sender;
+    }
     struct Scholorship
     {
         string orgName;
         uint amount;
+        string txnId;
     }
 
     struct Student{
@@ -24,77 +31,107 @@ contract ScholorhsipPortal{
         bool isGov;
         uint fundSanctioned;
         uint fundDistributed;
+        bool isVerified;
     }
 
-    // Student[] public registeredStudents;
-    // Organization[] public registeredOrganizations;
-    mapping(uint=>Student) public registeredStudentsmp;
-    mapping(address=>Organization) public registeredOrganizationsmp;
+    mapping(uint=>Student) public registeredStudents;
+    mapping(address=>Organization) public registeredOrganizations;
+    mapping (string=>string) public txnDoneBy;
+
+
+    modifier onlyVerifiedOrg {
+        require(bytes(registeredOrganizations[msg.sender].name).length != 0,"your organization is not registered");
+        require(registeredOrganizations[msg.sender].isVerified,"your organization is not verified");
+        _;
+   }
+
+   modifier onlyOwner {
+      require(msg.sender == owner);
+      _;
+   }
+
+    function verifyOrganization(address orgAddr) public onlyOwner{
+        require(bytes(registeredOrganizations[orgAddr].name).length != 0,"no such organization exist");
+        Organization storage org = registeredOrganizations[orgAddr];
+        org.isVerified= true;
+    }
 
     function registerStudent(uint _aadhar,uint _accNum) public
     {
         //check if student already registered
-        require(registeredStudentsmp[_aadhar].aadhar== 0, "student already registered");
+        require(registeredStudents[_aadhar].aadhar== 0, "student already registered");
 
-        // registeredStudents.push();
-        Student storage s=registeredStudentsmp[_aadhar];
+        Student storage s=registeredStudents[_aadhar];
         s.aadhar=_aadhar;
         s.accNum = _accNum;
         s.receivedGovScholorship = false;
         s.lock = false;
-        // registeredStudentsmp[_aadhar]=s;
-        // s.scholorships = new Scholorship[](0);
     }
 
     function registerOrganization(string memory _name,bool _isgov,uint _fs) public
     {      
-        //check if student already registered
-        require(bytes(registeredOrganizationsmp[msg.sender].name).length== 0, "organization with this address already exist");
+        //check if some already registered with sender address
+        require(bytes(registeredOrganizations[msg.sender].name).length== 0, "organization with this address already exist");
 
-        Organization memory org = Organization({name:_name,isGov:_isgov,fundSanctioned:_fs,fundDistributed:0});
-        // registeredOrganizations.push(org);
-        registeredOrganizationsmp[msg.sender] = org;
+        Organization memory org = Organization({name:_name,isGov:_isgov,fundSanctioned:_fs,fundDistributed:0,isVerified:false});
+        registeredOrganizations[msg.sender] = org;
     }
 
-    //TODO: can add a check that only registered org can see the data
-    function getStudentDetail(uint _aadhar) public view returns(Student memory)
+    function getStudentDetail(uint _aadhar) public view onlyVerifiedOrg returns(Student memory)
     {
-        return registeredStudentsmp[_aadhar];
+        return registeredStudents[_aadhar];
     }
 
     function getOrganizationDetail(address orgAddr ) public view returns(Organization memory)
     {
-        return registeredOrganizationsmp[orgAddr];
+        return registeredOrganizations[orgAddr];
     }
 
-    function verifyPayment(uint studentId,uint amount,string memory txnId) public returns(string memory)
+    
+    function validateTxn(uint studentId,uint amount,string memory txnId) private view returns(bool)
     {
-        //add check: only registered org can call this function
-        require(bytes(registeredOrganizationsmp[msg.sender].name).length != 0,"your organization is not registered");
+
+        //take account from api;
+
+        //take amount from api;
+
+        //match data
+
+        //IDEA:thinking of omitting this amount
+    }
+
+    function verifyPayment(uint studentId,uint amount,string memory txnId) public onlyVerifiedOrg
+    {
+
+        require(bytes(txnDoneBy[txnId]).length==0,"this transaction has already occured");
 
         //check if the student is registered
-        require(registeredStudentsmp[studentId].aadhar!= 0,"student is not registered on the portal");
-        //check if student is already having government scholorship
-        require(!registeredStudentsmp[studentId].receivedGovScholorship,"student has already received goverment scholorship");
+        require(registeredStudents[studentId].aadhar!= 0,"student is not registered on the portal");
+        
+        //if the org is private, then scholorship allowed
+        //but if org is government and student already have goverment scholorship then reject
+        require(!registeredOrganizations[msg.sender].isGov||!registeredStudents[studentId].receivedGovScholorship,"student has already received goverment scholorship");
 
         //check enough funds available
-        Organization storage org = registeredOrganizationsmp[msg.sender];
+        Organization storage org = registeredOrganizations[msg.sender];
         uint bal = org.fundSanctioned-org.fundDistributed;
         require(bal-amount>=0,"not enough funds");
 
         //verify transaction
-        
+        validateTxn(studentId,amount,txnId);
         //add it to distributed fund
         org.fundDistributed+=amount;
-
+        
+        txnDoneBy[txnId]=org.name;
         //check type of org:gov/private and update the student record accordingly
-        if(registeredOrganizationsmp[msg.sender].isGov)
+        Student storage stud = registeredStudents[studentId];
+        if(registeredOrganizations[msg.sender].isGov)
         {
-        Student storage stud = registeredStudentsmp[studentId];
         stud.receivedGovScholorship=true;
         stud.lock = false;
         }
 
-
+        Scholorship memory scholorship = Scholorship(org.name,amount,txnId);
+        stud.scholorships.push(scholorship);
     }
 }
