@@ -16,8 +16,9 @@ contract ScholorhsipPortal is ChainlinkClient, ConfirmedOwner{
 
 
     constructor() ConfirmedOwner(msg.sender) {
-        setChainlinkToken(0x326C977E6efc84E512bB9C30f76E30c160eD06FB);
+        setChainlinkToken(0x01BE23585060835E02B77ef475b0Cc51aA1e0709);
         setChainlinkOracle(0xCC79157eb46F5624204f47AB42b3906cAA40eaB7);
+        //old oracle: 0xf3FBB7f3391F62C8fe53f89B41dFC8159EE9653f
         // owner = msg.sender;
         jobId = "ca98366cc7314957b8c012c72f05aeeb";
         fee = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
