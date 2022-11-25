@@ -1,24 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0
 
-pragma solidity >=0.7.0 <0.9.0;
-import "hardhat/console.sol";
+pragma solidity >=0.8.12 <0.9.0;
 import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
 import "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 contract ScholorhsipPortal is ChainlinkClient, ConfirmedOwner{
     using Chainlink for Chainlink.Request;
-    // address owner;
+
+    uint256 public volume;
     bytes32 private jobId;
     uint256 private fee;
-    uint256 public btc;
-    uint256 public usd;
-    uint256 public eur;
 
 
     constructor() ConfirmedOwner(msg.sender) {
         setChainlinkToken(0x326C977E6efc84E512bB9C30f76E30c160eD06FB);
         setChainlinkOracle(0xCC79157eb46F5624204f47AB42b3906cAA40eaB7);
-        // owner = msg.sender;
         jobId = "ca98366cc7314957b8c012c72f05aeeb";
         fee = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
     }
@@ -57,10 +54,6 @@ contract ScholorhsipPortal is ChainlinkClient, ConfirmedOwner{
         _;
    }
 
-//    modifier onlyOwner {
-//       require(msg.sender == owner);
-//       _;
-//    }
 
     function verifyOrganization(address orgAddr) public onlyOwner{
         require(bytes(registeredOrganizations[orgAddr].name).length != 0,"no such organization exist");
@@ -99,45 +92,34 @@ contract ScholorhsipPortal is ChainlinkClient, ConfirmedOwner{
         return registeredOrganizations[orgAddr];
     }
 
-    function requestMultipleParameters() public {
+   function makeVerificationRequest(string memory txnId,uint256 aadhar,uint256 accno) public returns (bytes32 requestId) {
         Chainlink.Request memory req = buildChainlinkRequest(
             jobId,
             address(this),
-            this.fulfillMultipleParameters.selector
+            this.fulfill.selector
         );
+        string memory url = string.concat("https://transaction-verify.onrender.com/verify?txn=",txnId, "&account=", Strings.toString(accno),"&aadhar=",Strings.toString(aadhar));
+
+        // Set the URL to perform the GET request on
         req.add(
-            "urlBTC",
-            "https://min-api.cryptocompare.com/data/price?fsym=ETH&tsyms=BTC"
+            "get",
+            url
         );
-        req.add("pathBTC", "BTC");
-        req.add(
-            "urlUSD",
-            "https://min-api.cryptocompare.com/data/price?fsym=ETH&tsyms=USD"
-        );
-        req.add("pathUSD", "USD");
-        req.add(
-            "urlEUR",
-            "https://min-api.cryptocompare.com/data/price?fsym=ETH&tsyms=EUR"
-        );
-        req.add("pathEUR", "EUR");
-        sendChainlinkRequest(req, fee); // MWR API.
+        req.add("path", "amount"); 
+        // can multiply the answer by 100 to remove decimal and keep the calc in term of paisa unit
+        int256 timesAmount = 1;
+        req.addInt("times", timesAmount);
+
+        // Sends the request
+        return sendChainlinkRequest(req, fee);
     }
 
-    function fulfillMultipleParameters(
-        bytes32 requestId,
-        uint256 btcResponse,
-        uint256 usdResponse,
-        uint256 eurResponse
-    ) public recordChainlinkFulfillment(requestId) {
-        // emit RequestMultipleFulfilled(
-        //     requestId,
-        //     btcResponse,
-        //     usdResponse,
-        //     eurResponse
-        // );
-        btc = btcResponse;
-        usd = usdResponse;
-        eur = eurResponse;
+    function fulfill(
+        bytes32 _requestId,
+        uint256 _volume
+    ) public recordChainlinkFulfillment(_requestId) {
+        // emit RequestVolume(_requestId, _volume);
+        volume = _volume;
     }
 
     function withdrawLink() public onlyOwner {
@@ -161,7 +143,7 @@ contract ScholorhsipPortal is ChainlinkClient, ConfirmedOwner{
         //IDEA:thinking of omitting this amount
     }
 
-    function verifyPayment(uint studentId,uint amount,string memory txnId) public onlyVerifiedOrg
+    function verifyPayment(uint studentId,uint amount,uint accno,string memory txnId) public onlyVerifiedOrg
     {
 
         require(bytes(txnDoneBy[txnId]).length==0,"this transaction has already occured");
@@ -179,9 +161,10 @@ contract ScholorhsipPortal is ChainlinkClient, ConfirmedOwner{
         require(bal-amount>=0,"not enough funds");
 
         //verify transaction
-        validateTxn(studentId,amount,txnId);
+        makeVerificationRequest(txnId,studentId,accno);
         //add it to distributed fund
         org.fundDistributed+=amount;
+        //TODO:add zero check
         
         txnDoneBy[txnId]=org.name;
         //check type of org:gov/private and update the student record accordingly
