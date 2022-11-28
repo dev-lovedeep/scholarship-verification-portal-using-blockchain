@@ -5,7 +5,7 @@ import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
 import "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
-contract ScholorhsipPortal is ChainlinkClient, ConfirmedOwner{
+contract ScholorshipPortal is ChainlinkClient, ConfirmedOwner{
     using Chainlink for Chainlink.Request;
 
     uint256 public volume;
@@ -47,6 +47,11 @@ contract ScholorhsipPortal is ChainlinkClient, ConfirmedOwner{
     mapping(address=>Organization) public registeredOrganizations;
     mapping (string=>string) public txnDoneBy;
 
+    //these variable hold temporary value 
+    address private currOrgAddress;
+    uint private currStudentId;
+    string private currTxnId;
+
 
     modifier onlyVerifiedOrg {
         require(bytes(registeredOrganizations[msg.sender].name).length != 0,"your organization is not registered");
@@ -76,29 +81,56 @@ contract ScholorhsipPortal is ChainlinkClient, ConfirmedOwner{
     function registerOrganization(string memory _name,bool _isgov,uint _fs) public
     {      
         //check if some already registered with sender address
-        require(bytes(registeredOrganizations[msg.sender].name).length== 0, "organization with this address already exist");
+        require(bytes(registeredOrganizations[msg.sender].name).length== 0,
+         "organization with this address already exist");
 
-        Organization memory org = Organization({name:_name,isGov:_isgov,fundSanctioned:_fs,fundDistributed:0,isVerified:false});
+        Organization memory org = Organization({
+        name:_name,
+        isGov:_isgov,
+        fundSanctioned:_fs,
+        fundDistributed:0,
+        isVerified:false});
         registeredOrganizations[msg.sender] = org;
     }
 
     function getStudentDetail(uint _aadhar) public view onlyVerifiedOrg returns(Student memory)
     {
-        return registeredStudents[_aadhar];
+        Student memory stud = registeredStudents[_aadhar];
+        require(stud.aadhar!=0, "student does not exist");
+        return stud;
+    }
+
+    function lockProfile(uint _aadhar) public onlyVerifiedOrg
+    {
+        require(registeredStudents[_aadhar].aadhar!=0, "student does not exist");
+        Student storage stud = registeredStudents[_aadhar];
+        stud.lock=true;
     }
 
     function getOrganizationDetail(address orgAddr ) public view returns(Organization memory)
     {
-        return registeredOrganizations[orgAddr];
+        Organization memory org = registeredOrganizations[orgAddr];
+        require(bytes(org.name).length!= 0,
+         "organization with this address does not exist");
+         return org;
     }
 
-   function makeVerificationRequest(string memory txnId,uint256 aadhar,uint256 accno) public returns (bytes32 requestId) {
+   function makeVerificationRequest(
+    string memory txnId,
+    uint256 aadhar,
+    uint256 accno) private {
         Chainlink.Request memory req = buildChainlinkRequest(
             jobId,
             address(this),
             this.fulfill.selector
         );
-        string memory url = string.concat("https://transaction-verify.onrender.com/verify?txn=",txnId, "&account=", Strings.toString(accno),"&aadhar=",Strings.toString(aadhar));
+        // string memory url="https://transaction-verify.onrender.com/verify?txn=abcdef12345&account=12345678";
+        string memory url = string.concat(
+            "https://transaction-verify.onrender.com/verify?txn=",
+            txnId,
+            "&account=", 
+            Strings.toString(accno),
+            "&aadhar=",Strings.toString(aadhar));
 
         // Set the URL to perform the GET request on
         req.add(
@@ -107,11 +139,10 @@ contract ScholorhsipPortal is ChainlinkClient, ConfirmedOwner{
         );
         req.add("path", "amount"); 
         // can multiply the answer by 100 to remove decimal and keep the calc in term of paisa unit
-        int256 timesAmount = 1;
+        int256 timesAmount = 1; 
         req.addInt("times", timesAmount);
-
         // Sends the request
-        return sendChainlinkRequest(req, fee);
+        sendChainlinkRequest(req, fee);
     }
 
     function fulfill(
@@ -120,6 +151,7 @@ contract ScholorhsipPortal is ChainlinkClient, ConfirmedOwner{
     ) public recordChainlinkFulfillment(_requestId) {
         // emit RequestVolume(_requestId, _volume);
         volume = _volume;
+        updateDataAfterVerification(_volume);
     }
 
     function withdrawLink() public onlyOwner {
@@ -131,19 +163,34 @@ contract ScholorhsipPortal is ChainlinkClient, ConfirmedOwner{
     }
 
     
-    function validateTxn(uint studentId,uint amount,string memory txnId) private view returns(bool)
+    function updateDataAfterVerification(uint amount) private
     {
 
-        //take account from api;
+        require(amount>0,"invalid transaction");
 
-        //take amount from api;
+        //check enough funds available
+        Organization storage org = registeredOrganizations[currOrgAddress];
+        uint bal = org.fundSanctioned-org.fundDistributed;
+        require(bal-amount>=0,"you dont enough funds,thus invalid transaction");
 
-        //match data
+        //add it to distributed fund
+        org.fundDistributed+=amount;
+        
+        txnDoneBy[currTxnId]=org.name;
+        //check type of org:gov/private and update the student record accordingly
+        Student storage stud = registeredStudents[currStudentId];
+        if(registeredOrganizations[currOrgAddress].isGov)
+        {
+        stud.receivedGovScholorship=true;
+        stud.lock = false;
+        }
 
-        //IDEA:thinking of omitting this amount
+        Scholorship memory scholorship = Scholorship(org.name,amount,currTxnId);
+        stud.scholorships.push(scholorship);
+         
     }
 
-    function verifyPayment(uint studentId,uint amount,uint accno,string memory txnId) public onlyVerifiedOrg
+    function verifyPayment(uint studentId,uint accno,string memory txnId) public onlyVerifiedOrg
     {
 
         require(bytes(txnDoneBy[txnId]).length==0,"this transaction has already occured");
@@ -151,31 +198,18 @@ contract ScholorhsipPortal is ChainlinkClient, ConfirmedOwner{
         //check if the student is registered
         require(registeredStudents[studentId].aadhar!= 0,"student is not registered on the portal");
         
-        //if the org is private, then scholorship allowed
-        //but if org is government and student already have goverment scholorship then reject
-        require(!registeredOrganizations[msg.sender].isGov||!registeredStudents[studentId].receivedGovScholorship,"student has already received goverment scholorship");
+        //if org is government and student already have goverment scholorship then reject
+        if(registeredOrganizations[msg.sender].isGov)
+        {
+            require(!registeredStudents[studentId].receivedGovScholorship,"student has already received goverment scholorship");
+        }
 
-        //check enough funds available
-        Organization storage org = registeredOrganizations[msg.sender];
-        uint bal = org.fundSanctioned-org.fundDistributed;
-        require(bal-amount>=0,"not enough funds");
+        //set details so that they can be used after the request is fullfilled
+        currOrgAddress = msg.sender;
+        currStudentId = studentId;
+        currTxnId=txnId;
 
         //verify transaction
         makeVerificationRequest(txnId,studentId,accno);
-        //add it to distributed fund
-        org.fundDistributed+=amount;
-        //TODO:add zero check
-        
-        txnDoneBy[txnId]=org.name;
-        //check type of org:gov/private and update the student record accordingly
-        Student storage stud = registeredStudents[studentId];
-        if(registeredOrganizations[msg.sender].isGov)
-        {
-        stud.receivedGovScholorship=true;
-        stud.lock = false;
-        }
-
-        Scholorship memory scholorship = Scholorship(org.name,amount,txnId);
-        stud.scholorships.push(scholorship);
     }
 }
