@@ -6,7 +6,6 @@
 // global scope, and execute the script.
 const hre = require("hardhat");
 // formatEther = ethers.utils.formatEther;
-// address = '0x32C22914978451Ded5a17B3c1336eD70aeBDb902';
 // token = await ethers.getContractAt("ScholorshipPortal", address);
 async function main() {
   const currentTimestampInSeconds = Math.round(Date.now() / 1000);

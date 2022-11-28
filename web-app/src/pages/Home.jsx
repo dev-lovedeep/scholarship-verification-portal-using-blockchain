@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import bg from "../assets/bg.jpg";
 const Home = () => {
+  console.log(import.meta.env.VITE_contractAddress);
   return (
     <div
       className="min-h-screen w-full flex justify-center items-center"

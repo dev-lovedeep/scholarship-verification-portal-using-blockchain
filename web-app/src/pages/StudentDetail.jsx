@@ -4,7 +4,7 @@ import ScholorshipPortal from "../artifacts/contracts/ScholorshipPortal.sol/Scho
 import { toast } from "react-toastify";
 import bg from "../assets/bg.jpg";
 import StudentCard from "./StudentCard";
-const contractAddress = "0x32C22914978451Ded5a17B3c1336eD70aeBDb902";
+const contractAddress = import.meta.env.VITE_contractAddress;
 const StudentDetail = () => {
   const [aadhar, setAadhar] = useState("");
   const [details, setDetails] = useState(null);

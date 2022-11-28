@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { ethers } from "ethers";
 import ScholorshipPortal from "../artifacts/contracts/ScholorshipPortal.sol/ScholorshipPortal.json";
 import { toast } from "react-toastify";
-const contractAddress = "0x32C22914978451Ded5a17B3c1336eD70aeBDb902";
+const contractAddress = import.meta.env.VITE_contractAddress;
 import bg from "../assets/bg.jpg";
 const OrgDetail = () => {
   const [address, setAddress] = useState("");
